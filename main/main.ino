@@ -25,6 +25,8 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+#include <SD.h>
+
 #include "User_config.h"
 
 // States of the gateway
@@ -652,6 +654,98 @@ void pub(const char* topicori, const char* payload) {
  * @param retain true if you what a retain
  */
 void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
+  if (SD.exists("/settings.json")) {
+    settingsFile = SD.open("/settings.json", FILE_READ);
+    if (settingsFile) {
+      // Get file size
+      size_t fileSize = settingsFile.size();
+
+      // Allocate memory based on file size
+      std::unique_ptr<char[]> buf(new char[fileSize]);
+      settingsFile.readBytes(buf.get(), fileSize);
+      settingsFile.close();
+
+      // Parse JSON settings
+      DynamicJsonDocument settingsDoc(fileSize);
+      DeserializationError error = deserializeJson(settingsDoc, buf.get(), fileSize);
+      if (error) {
+        Serial.print("deserializeJson() failed: ");
+        Serial.println(error.c_str());
+        //return;
+      }
+
+      // Process settings here
+      // Example:
+      //   const char* sensor_id = settingsDoc["sensor_id"];
+      // Serial.print("Sensor ID: ");
+      //Serial.println(sensor_id);
+
+      for (JsonVariant& setting : settingsDoc.as<JsonArray>()) {
+        //add more functions other than equals as an option (use functions for this)
+        if (data[setting["identification_element"]] == setting["identification_match"]) {
+          int y = 0 for (JsonVariant& dataKey : setting["dataExtractKeys"]) {
+            String var = data[dataKey];
+            String formula = setting["formula"];
+
+            size_t pos = formula.find("var");
+            while (pos != string::npos) {
+              formula.replace(pos, 1, to_string(x));
+              pos = formula.find("x", pos + 1);
+            }
+
+            char op;
+            double value;
+            double result = 0;
+            stringstream ss(formula);
+
+            while (ss >> op >> value) {
+              if (op == 'x') {
+                // Replace 'x' with the provided value
+                result += x * value;
+              } else {
+                // Perform arithmetic operation
+                switch (op) {
+                  case '+':
+                    result += value;
+                    break;
+                  case '-':
+                    result -= value;
+                    break;
+                  case '*':
+                    result *= value;
+                    break;
+                  case '/':
+                    result /= value;
+                    break;
+                  case '^':
+                    result = pow(result, value);
+                    break;
+                  default:
+                    cout << "Invalid operator: " << op << endl;
+                    //return 0; // Error
+                }
+              }
+            }
+
+            //send result to mqtt topic
+
+            String stringResult = to_string(result);
+
+            pubMQTT(setting["mqttTopic"][y], stringResult.c_str(), retain); //need some error checking on size of arrays input into settings. 
+          }
+          y++;
+        }
+      }
+
+    } else {
+      Serial.println("Failed to open settings file");
+    }
+  } else {
+    Serial.println("Settings file not found");
+  }
+
+
+//need and else here but maybe change it to else and check if no errors. if errror then also send this so we're not not sending data. 
   String buffer = "";
   serializeJson(data, buffer);
   pubMQTT(topic, buffer.c_str(), retain);
@@ -1053,6 +1147,10 @@ void setup() {
   SetupIndicatorSendReceive();
   SetupIndicatorInfo();
   SetupIndicators(); // For RGB Leds
+
+  if (!SD.begin()) {
+    Serial.println("Failed to initialize SD card");
+  }
 
 #if defined(ESP8266) || defined(ESP32)
 #  ifdef ESP8266
