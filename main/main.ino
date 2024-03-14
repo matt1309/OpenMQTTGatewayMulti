@@ -26,6 +26,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 #include <SD.h>
+#include "muParser.h"
 
 #include "User_config.h"
 
@@ -231,6 +232,11 @@ struct GfSun2000Data {};
 /*------------------------------------------------------------------------*/
 
 void setupTLS(bool self_signed = false, uint8_t index = 0);
+
+
+const char* getValueFromKeys(const JsonVariant& root, const String& keys) {
+    return root[keys].as<const char*>(); // Change the return type as per your JSON data type
+}
 
 //adding this to bypass the problem of the arduino builder issue 50
 void callback(char* topic, byte* payload, unsigned int length);
@@ -683,53 +689,29 @@ void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
       for (JsonVariant& setting : settingsDoc.as<JsonArray>()) {
         //add more functions other than equals as an option (use functions for this)
         if (data[setting["identification_element"]] == setting["identification_match"]) {
-          int y = 0 for (JsonVariant& dataKey : setting["dataExtractKeys"]) {
-            String var = data[dataKey];
+          int y = 0;
+           for (JsonVariant& dataKey : setting["dataExtractKeys"]) {
+
+            //extract element recusively. done one level atm. 
+
+
+
+          
+
+
+            String var = getValueFromKeys(data,datakey)
             String formula = setting["formula"];
 
-            size_t pos = formula.find("var");
-            while (pos != string::npos) {
-              formula.replace(pos, 1, to_string(x));
-              pos = formula.find("x", pos + 1);
-            }
+         mu::Parser parser;
+         
+         parser.DefineVar("x",var);
+         parser.SetExpr(formula);
 
-            char op;
-            double value;
-            double result = 0;
-            stringstream ss(formula);
-
-            while (ss >> op >> value) {
-              if (op == 'x') {
-                // Replace 'x' with the provided value
-                result += x * value;
-              } else {
-                // Perform arithmetic operation
-                switch (op) {
-                  case '+':
-                    result += value;
-                    break;
-                  case '-':
-                    result -= value;
-                    break;
-                  case '*':
-                    result *= value;
-                    break;
-                  case '/':
-                    result /= value;
-                    break;
-                  case '^':
-                    result = pow(result, value);
-                    break;
-                  default:
-                    cout << "Invalid operator: " << op << endl;
-                    //return 0; // Error
-                }
-              }
-            }
+         //add some code for transformation ie if we need to wrap stringResult in something like {"value": var}
 
             //send result to mqtt topic
 
-            String stringResult = to_string(result);
+            String stringResult = to_string(parser.Eval());
 
             pubMQTT(setting["mqttTopic"][y], stringResult.c_str(), retain); //need some error checking on size of arrays input into settings. 
           }
