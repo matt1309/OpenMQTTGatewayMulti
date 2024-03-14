@@ -26,9 +26,10 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 #include <SD.h>
-#include "muParser.h"
 
 #include "User_config.h"
+#include <Arduino.h>
+#include <math.h>
 
 // States of the gateway
 // Wm setup
@@ -236,6 +237,73 @@ void setupTLS(bool self_signed = false, uint8_t index = 0);
 
 const char* getValueFromKeys(const JsonVariant& root, const String& keys) {
     return root[keys].as<const char*>(); // Change the return type as per your JSON data type
+}
+
+
+
+double evaluateExpression(double x, String expression) {
+  double result = 0.0;
+  int operand = 0;
+  char operation = '+';
+  String functionName = "";
+
+  for (size_t i = 0; i < expression.length(); ++i) {
+    char c = expression.charAt(i);
+
+    // If it's a digit, accumulate the operand
+    if (isdigit(c) || c == '.') {
+      operand = operand * 10 + (c - '0');
+    } 
+    // If it's an operation or end of string, perform calculation
+    else if (c == '+' || c == '-' || c == '*' || c == '/' || c == '(' || c == ')' || i == expression.length() - 1) {
+      // Perform operation based on previous operator
+      switch (operation) {
+        case '+':
+          result += operand;
+          break;
+        case '-':
+          result -= operand;
+          break;
+        case '*':
+          result *= operand;
+          break;
+        case '/':
+          result /= operand;
+          break;
+      }
+
+      // Reset operand for the next number
+      operand = 0;
+      // Update current operation
+      operation = c;
+    }
+    else if (isalpha(c)) {
+      // If it's an alphabet character, accumulate function name
+      functionName += c;
+    }
+    else if (c == '(') {
+      // If it's an opening parenthesis, treat the accumulated characters as a function name
+      if (functionName == "sin") {
+        result += sin(x);
+      } else if (functionName == "cos") {
+        result += cos(x);
+      } else if (functionName == "tan") {
+        result += tan(x);
+     } else if (functionName == "asin") {
+        result += asin(x);
+      } else if (functionName == "acos") {
+        result += acos(x);
+      } else if (functionName == "atan") {
+        result += atan(x);
+      } else if (functionName == "sqrt") {
+        result += sqrt(x);
+      }
+      // Reset function name for the next function
+      functionName = "";
+    }
+  }
+
+  return result;
 }
 
 //adding this to bypass the problem of the arduino builder issue 50
@@ -702,16 +770,14 @@ void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
             String var = getValueFromKeys(data,datakey)
             String formula = setting["formula"];
 
-         mu::Parser parser;
+       
          
-         parser.DefineVar("x",var);
-         parser.SetExpr(formula);
 
          //add some code for transformation ie if we need to wrap stringResult in something like {"value": var}
 
             //send result to mqtt topic
 
-            String stringResult = to_string(parser.Eval());
+            String stringResult = to_string(evaluateExpress(var,formula));
 
             pubMQTT(setting["mqttTopic"][y], stringResult.c_str(), retain); //need some error checking on size of arrays input into settings. 
           }
