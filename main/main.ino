@@ -729,7 +729,7 @@ void pub(const char* topicori, const char* payload) {
  */
 void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
   if (SD.exists("/settings.json")) {
-    settingsFile = SD.open("/settings.json", FILE_READ);
+    File settingsFile = SD.open("/settings.json", FILE_READ);
     if (settingsFile) {
       // Get file size
       size_t fileSize = settingsFile.size();
@@ -754,11 +754,11 @@ void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
       // Serial.print("Sensor ID: ");
       //Serial.println(sensor_id);
 
-      for (JsonVariant& setting : settingsDoc.as<JsonArray>()) {
+      for (const JsonVariant& setting : settingsDoc.as<JsonArray>()) {
         //add more functions other than equals as an option (use functions for this)
-        if (data[setting["identification_element"]] == setting["identification_match"]) {
+        if (data[setting["identification_element"].as<const char*>()] == setting["identification_match"]) {
           int y = 0;
-           for (JsonVariant& dataKey : setting["dataExtractKeys"]) {
+           for (const JsonVariant& dataKey : setting["dataExtractKeys"].as<JsonArray>()) {
 
             //extract element recusively. done one level atm. 
 
@@ -767,21 +767,17 @@ void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
           
 
 
-            String var = getValueFromKeys(data,datakey)
-            String formula = setting["formula"];
+            String var = getValueFromKeys(data,dataKey.as<String>());
+            String formula = setting["formula"].as<String>();
 
        
-         
+          double result = evaluateExpression(var.toDouble(),formula);
+            String stringResult = String(result);
 
-         //add some code for transformation ie if we need to wrap stringResult in something like {"value": var}
-
-            //send result to mqtt topic
-
-            String stringResult = to_string(evaluateExpress(var,formula));
-
-            pubMQTT(setting["mqttTopic"][y], stringResult.c_str(), retain); //need some error checking on size of arrays input into settings. 
+            pubMQTT(setting["mqttTopic"][y], stringResult.c_str(), retain); //need some error checking on size of arrays input into settings.
+             y++; 
           }
-          y++;
+         
         }
       }
 
