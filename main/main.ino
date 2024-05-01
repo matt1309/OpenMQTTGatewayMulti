@@ -25,11 +25,11 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+#include <Arduino.h>
 #include <SD.h>
+#include <math.h>
 
 #include "User_config.h"
-#include <Arduino.h>
-#include <math.h>
 
 // States of the gateway
 // Wm setup
@@ -234,77 +234,120 @@ struct GfSun2000Data {};
 
 void setupTLS(bool self_signed = false, uint8_t index = 0);
 
-
 const char* getValueFromKeys(const JsonVariant& root, const String& keys) {
-    return root[keys].as<const char*>(); // Change the return type as per your JSON data type
+  return root[keys].as<const char*>(); // Change the return type as per your JSON data type
 }
 
 
+//MATT CODE start
+double evaluateExpression(double x, String expression);
 
-double evaluateExpression(double x, String expression) {
-  double result = 0.0;
-  int operand = 0;
-  char operation = '+';
-  String functionName = "";
-
-  for (size_t i = 0; i < expression.length(); ++i) {
-    char c = expression.charAt(i);
-
-    // If it's a digit, accumulate the operand
-    if (isdigit(c) || c == '.') {
-      operand = operand * 10 + (c - '0');
-    } 
-    // If it's an operation or end of string, perform calculation
-    else if (c == '+' || c == '-' || c == '*' || c == '/' || c == '(' || c == ')' || i == expression.length() - 1) {
-      // Perform operation based on previous operator
-      switch (operation) {
-        case '+':
-          result += operand;
-          break;
-        case '-':
-          result -= operand;
-          break;
-        case '*':
-          result *= operand;
-          break;
-        case '/':
-          result /= operand;
-          break;
-      }
-
-      // Reset operand for the next number
-      operand = 0;
-      // Update current operation
-      operation = c;
+double parseNumber(const String& expression, size_t& index) {
+    String number;
+    while (index < expression.length() && (isdigit(expression[index]) || expression[index] == '.')) {
+        number += expression[index];
+        index++;
     }
-    else if (isalpha(c)) {
-      // If it's an alphabet character, accumulate function name
-      functionName += c;
-    }
-    else if (c == '(') {
-      // If it's an opening parenthesis, treat the accumulated characters as a function name
-      if (functionName == "sin") {
-        result += sin(x);
-      } else if (functionName == "cos") {
-        result += cos(x);
-      } else if (functionName == "tan") {
-        result += tan(x);
-     } else if (functionName == "asin") {
-        result += asin(x);
-      } else if (functionName == "acos") {
-        result += acos(x);
-      } else if (functionName == "atan") {
-        result += atan(x);
-      } else if (functionName == "sqrt") {
-        result += sqrt(x);
-      }
-      // Reset function name for the next function
-      functionName = "";
-    }
-  }
-
-  return result;
+    return std::stod(number);
 }
+
+double evaluateFunction(double x, const String& functionName) {
+    if (functionName == "sin") {
+        return sin(x);
+    } else if (functionName == "cos") {
+        return cos(x);
+    } else if (functionName == "tan") {
+        return tan(x);
+    } else if (functionName == "asin") {
+        return asin(x);
+    } else if (functionName == "acos") {
+        return acos(x);
+    } else if (functionName == "atan") {
+        return atan(x);
+    } else if (functionName == "sqrt") {
+        return sqrt(x);
+    }
+    // If the function name is not recognized, return 0.0
+    return 0.0;
+}
+
+double evaluatePrimary(double x, const String& expression, size_t& index) {
+    if (expression[index] == '(') {
+        index++;
+        double result = evaluateExpression(x, expression, index);
+        index++; // Skip the closing parenthesis
+        return result;
+    } else if (isdigit(expression[index]) || expression[index] == '.') {
+        return parseNumber(expression, index);
+    } else if (isalpha(expression[index])) {
+        String functionName;
+        while (index < expression.length() && isalpha(expression[index])) {
+            functionName += expression[index];
+            index++;
+        }
+        return evaluateFunction(x, functionName);
+    } else if (expression[index] == 'x') {
+        index++;
+        return x;
+    } else {
+        // Unexpected character, return 0.0
+        return 0.0;
+    }
+}
+
+double evaluateFactor(double x, const String& expression, size_t& index) {
+    double result = evaluatePrimary(x, expression, index);
+
+    while (index < expression.length() && (expression[index] == '*' || expression[index] == '/')) {
+        char op = expression[index];
+        index++; // Move past the operator
+
+        double nextFactor = evaluatePrimary(x, expression, index);
+
+        if (op == '*') {
+            result *= nextFactor;
+        } else if (op == '/') {
+            if (nextFactor != 0) {
+                result /= nextFactor;
+            } else {
+                // Division by zero, return 0.0
+                return 0.0;
+            }
+        }
+    }
+
+    return result;
+}
+
+
+double evaluateExpression(double x, const String& expression, size_t& index) {
+    double result = evaluateFactor(x, expression, index);
+
+    while (index < expression.length() && (expression[index] == '+' || expression[index] == '-')) {
+        char op = expression[index];
+        index++; // Move past the operator
+
+        double nextTerm = evaluateFactor(x, expression, index);
+
+        if (op == '+') {
+            result += nextTerm;
+        } else if (op == '-') {
+            result -= nextTerm;
+        }
+    }
+
+    return result;
+}
+
+double evaluateExpression(double x, const String& expression) {
+    size_t index = 0;
+    return evaluateExpression(x, expression, index);
+}
+
+
+//MATT CODE END
+
+
 
 //adding this to bypass the problem of the arduino builder issue 50
 void callback(char* topic, byte* payload, unsigned int length);
@@ -758,26 +801,39 @@ void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
         //add more functions other than equals as an option (use functions for this)
         if (data[setting["identification_element"].as<const char*>()] == setting["identification_match"]) {
           int y = 0;
-           for (const JsonVariant& dataKey : setting["dataExtractKeys"].as<JsonArray>()) {
+          for (const JsonVariant& dataKey : setting["dataExtractKeys"].as<JsonArray>()) {
+            //extract element recusively. done one level atm.
 
-            //extract element recusively. done one level atm. 
+            String var = getValueFromKeys(data, dataKey.as<String>());
 
+            String formula;
+            String mqttTopic;
+            bool mattError = false;
 
+            if (setting.containsKey("formula") && setting["formula"].is<JsonArray>() && setting.containsKey("mqttTopic") && setting["mqttTopic"].is<JsonArray>()) {
+              JsonArray formulaArray = setting["formula"].as<JsonArray>(); // Assuming "formula" is an array
+              JsonArray mqttTopicArray = setting["mqttTopic"].as<JsonArray>(); // Assuming "formula" is an array
+              if (formulaArray.size() > y&&) {
+                formula = formulaArray[y].as<String>();
+                mqttTopic = mqttTopicArray[y].as<String>();
+              } else {
+                Serial.println("Not enough formula/MQTT elements");
+                mattError = true;
+              }
+            } else {
+              Serial.println("Error or missing formula/mqttTopic from settings.json");
+              mattError = true;
+            }
 
-          
+            //String formula = setting["formula"][y].as<String>();
+            if (!mattError) {
+              double result = evaluateExpression(var.toDouble(), formula);
+              String stringResult = String(result);
 
-
-            String var = getValueFromKeys(data,dataKey.as<String>());
-            String formula = setting["formula"].as<String>();
-
-       
-          double result = evaluateExpression(var.toDouble(),formula);
-            String stringResult = String(result);
-
-            pubMQTT(setting["mqttTopic"][y], stringResult.c_str(), retain); //need some error checking on size of arrays input into settings.
-             y++; 
+              pubMQTT(mqttTopic, stringResult.c_str(), retain); //need some error checking on size of arrays input into settings.
+            }
+            y++;
           }
-         
         }
       }
 
@@ -788,8 +844,7 @@ void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
     Serial.println("Settings file not found");
   }
 
-
-//need and else here but maybe change it to else and check if no errors. if errror then also send this so we're not not sending data. 
+  //need and else here but maybe change it to else and check if no errors. if errror then also send this so we're not not sending data.
   String buffer = "";
   serializeJson(data, buffer);
   pubMQTT(topic, buffer.c_str(), retain);
