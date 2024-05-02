@@ -31,6 +31,9 @@
 
 #include "User_config.h"
 
+
+bool isSDInitialized = false; 
+
 // States of the gateway
 // Wm setup
 // Connected to MQTT
@@ -240,7 +243,7 @@ const char* getValueFromKeys(const JsonVariant& root, const String& keys) {
 
 
 //MATT CODE start
-double evaluateExpression(double x, String expression);
+//double evaluateExpression(double x, String expression);
 
 double parseNumber(const String& expression, size_t& index) {
     String number;
@@ -248,7 +251,7 @@ double parseNumber(const String& expression, size_t& index) {
         number += expression[index];
         index++;
     }
-    return std::stod(number);
+    return number.toDouble();
 }
 
 double evaluateFunction(double x, const String& functionName) {
@@ -771,7 +774,7 @@ void pub(const char* topicori, const char* payload) {
  * @param retain true if you what a retain
  */
 void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
-  if (SD.exists("/settings.json")) {
+  if (isSDInitialized && SD.exists("/settings.json")) {
     File settingsFile = SD.open("/settings.json", FILE_READ);
     if (settingsFile) {
       // Get file size
@@ -799,6 +802,9 @@ void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
 
       for (const JsonVariant& setting : settingsDoc.as<JsonArray>()) {
         //add more functions other than equals as an option (use functions for this)
+       // String id = getValueFromKeys(data, setting["identification_element"].as<String>);
+
+
         if (data[setting["identification_element"].as<const char*>()] == setting["identification_match"]) {
           int y = 0;
           for (const JsonVariant& dataKey : setting["dataExtractKeys"].as<JsonArray>()) {
@@ -807,13 +813,13 @@ void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
             String var = getValueFromKeys(data, dataKey.as<String>());
 
             String formula;
-            String mqttTopic;
+            String mqttTopic = topic;
             bool mattError = false;
 
             if (setting.containsKey("formula") && setting["formula"].is<JsonArray>() && setting.containsKey("mqttTopic") && setting["mqttTopic"].is<JsonArray>()) {
               JsonArray formulaArray = setting["formula"].as<JsonArray>(); // Assuming "formula" is an array
               JsonArray mqttTopicArray = setting["mqttTopic"].as<JsonArray>(); // Assuming "formula" is an array
-              if (formulaArray.size() > y&&) {
+              if (formulaArray.size() > y && mqttTopicArray.size() > y) {
                 formula = formulaArray[y].as<String>();
                 mqttTopic = mqttTopicArray[y].as<String>();
               } else {
@@ -827,10 +833,12 @@ void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
 
             //String formula = setting["formula"][y].as<String>();
             if (!mattError) {
-              double result = evaluateExpression(var.toDouble(), formula);
+              double varDouble = var.toDouble();
+              double result = evaluateExpression(varDouble, formula.c_str());
               String stringResult = String(result);
+              const char* mqttTopicInput = mqttTopic.c_str();
 
-              pubMQTT(mqttTopic, stringResult.c_str(), retain); //need some error checking on size of arrays input into settings.
+              pubMQTT(mqttTopicInput, stringResult.c_str(), retain); //need some error checking on size of arrays input into settings.
             }
             y++;
           }
@@ -1226,6 +1234,8 @@ void setESPWifiProtocolTxPower() {
 }
 #endif
 
+  
+
 void setup() {
   //Launch serial for debugging purposes
   Serial.begin(SERIAL_BAUD);
@@ -1235,6 +1245,7 @@ void setup() {
   pinMode(TRIGGER_GPIO, INPUT_PULLUP);
   checkButton();
 #endif
+
 
   delay(100); //give time to start the flash and avoid issue when reading the preferences
 
@@ -1249,6 +1260,10 @@ void setup() {
 
   if (!SD.begin()) {
     Serial.println("Failed to initialize SD card");
+    
+  }else{
+isSDInitialized = true;
+
   }
 
 #if defined(ESP8266) || defined(ESP32)
