@@ -31,9 +31,6 @@
 
 #include "User_config.h"
 
-
-bool isSDInitialized = false; 
-
 // States of the gateway
 // Wm setup
 // Connected to MQTT
@@ -108,6 +105,7 @@ SemaphoreHandle_t xQueueMutex;
 #endif
 
 StaticJsonDocument<JSON_MSG_BUFFER> modulesBuffer;
+StaticJsonDocument<JSON_MSG_BUFFER> jsonSYSCONFIGBuffer;
 JsonArray modules = modulesBuffer.to<JsonArray>();
 bool ethConnected = false;
 
@@ -241,116 +239,119 @@ const char* getValueFromKeys(const JsonVariant& root, const String& keys) {
   return root[keys].as<const char*>(); // Change the return type as per your JSON data type
 }
 
-
 //MATT CODE start
 //double evaluateExpression(double x, String expression);
 
 double parseNumber(const String& expression, size_t& index) {
-    String number;
-    while (index < expression.length() && (isdigit(expression[index]) || expression[index] == '.')) {
-        number += expression[index];
-        index++;
-    }
-    return number.toDouble();
+  String number;
+  while (index < expression.length() && (isdigit(expression[index]) || expression[index] == '.')) {
+    number += expression[index];
+    index++;
+  }
+  return number.toDouble();
 }
 
 double evaluateFunction(double x, const String& functionName) {
-    if (functionName == "sin") {
-        return sin(x);
-    } else if (functionName == "cos") {
-        return cos(x);
-    } else if (functionName == "tan") {
-        return tan(x);
-    } else if (functionName == "asin") {
-        return asin(x);
-    } else if (functionName == "acos") {
-        return acos(x);
-    } else if (functionName == "atan") {
-        return atan(x);
-    } else if (functionName == "sqrt") {
-        return sqrt(x);
-    }
-    // If the function name is not recognized, return 0.0
-    return 0.0;
+  if (functionName == "sin") {
+    return sin(x);
+  } else if (functionName == "cos") {
+    return cos(x);
+  } else if (functionName == "tan") {
+    return tan(x);
+  } else if (functionName == "asin") {
+    return asin(x);
+  } else if (functionName == "acos") {
+    return acos(x);
+  } else if (functionName == "atan") {
+    return atan(x);
+  } else if (functionName == "sqrt") {
+    return sqrt(x);
+  }
+  // If the function name is not recognized, return 0.0
+  return 0.0;
 }
 
 double evaluatePrimary(double x, const String& expression, size_t& index) {
-    if (expression[index] == '(') {
-        index++;
-        double result = evaluateExpression(x, expression, index);
-        index++; // Skip the closing parenthesis
-        return result;
-    } else if (isdigit(expression[index]) || expression[index] == '.') {
-        return parseNumber(expression, index);
-    } else if (isalpha(expression[index])) {
-        String functionName;
-        while (index < expression.length() && isalpha(expression[index])) {
-            functionName += expression[index];
-            index++;
-        }
-        return evaluateFunction(x, functionName);
-    } else if (expression[index] == 'x') {
-        index++;
-        return x;
-    } else {
-        // Unexpected character, return 0.0
-        return 0.0;
+  if (expression[index] == '(') {
+    index++;
+    double result = evaluateExpression(x, expression, index);
+    index++; // Skip the closing parenthesis
+    return result;
+  } else if (isdigit(expression[index]) || expression[index] == '.') {
+    return parseNumber(expression, index);
+  } else if (isalpha(expression[index])) {
+    String functionName;
+    while (index < expression.length() && isalpha(expression[index])) {
+      functionName += expression[index];
+      index++;
     }
+    // Check if it's a function call
+    if (expression[index] == '(') {
+      index++; // Move past '('
+      double argument = evaluateExpression(x, expression, index);
+      index++; // Move past ')'
+      return evaluateFunction(argument, functionName);
+    } else {
+      return evaluateFunction(x, functionName);
+    }
+  } else if (expression[index] == 'x') {
+    index++;
+    return x;
+  } else {
+    // Unexpected character, return 0.0
+    return 0.0;
+  }
 }
 
 double evaluateFactor(double x, const String& expression, size_t& index) {
-    double result = evaluatePrimary(x, expression, index);
+  double result = evaluatePrimary(x, expression, index);
 
-    while (index < expression.length() && (expression[index] == '*' || expression[index] == '/')) {
-        char op = expression[index];
-        index++; // Move past the operator
+  while (index < expression.length() && (expression[index] == '*' || expression[index] == '/')) {
+    char op = expression[index];
+    index++; // Move past the operator
 
-        double nextFactor = evaluatePrimary(x, expression, index);
+    double nextFactor = evaluatePrimary(x, expression, index);
 
-        if (op == '*') {
-            result *= nextFactor;
-        } else if (op == '/') {
-            if (nextFactor != 0) {
-                result /= nextFactor;
-            } else {
-                // Division by zero, return 0.0
-                return 0.0;
-            }
-        }
+    if (op == '*') {
+      result *= nextFactor;
+    } else if (op == '/') {
+      if (nextFactor != 0) {
+        result /= nextFactor;
+      } else {
+        // Division by zero, return 0.0
+        return 0.0;
+      }
     }
+  }
 
-    return result;
+  return result;
 }
 
-
 double evaluateExpression(double x, const String& expression, size_t& index) {
-    double result = evaluateFactor(x, expression, index);
+  double result = evaluateFactor(x, expression, index);
 
-    while (index < expression.length() && (expression[index] == '+' || expression[index] == '-')) {
-        char op = expression[index];
-        index++; // Move past the operator
+  while (index < expression.length() && (expression[index] == '+' || expression[index] == '-')) {
+    char op = expression[index];
+    index++; // Move past the operator
 
-        double nextTerm = evaluateFactor(x, expression, index);
+    double nextTerm = evaluateFactor(x, expression, index);
 
-        if (op == '+') {
-            result += nextTerm;
-        } else if (op == '-') {
-            result -= nextTerm;
-        }
+    if (op == '+') {
+      result += nextTerm;
+    } else if (op == '-') {
+      result -= nextTerm;
     }
+  }
 
-    return result;
+  return result;
 }
 
 double evaluateExpression(double x, const String& expression) {
-    size_t index = 0;
-    return evaluateExpression(x, expression, index);
+  size_t index = 0;
+  return evaluateExpression(x, expression, index);
 }
 
-
 //MATT CODE END
-
-
 
 //adding this to bypass the problem of the arduino builder issue 50
 void callback(char* topic, byte* payload, unsigned int length);
@@ -678,6 +679,69 @@ void pub(const char* topicori, const char* payload, bool retainFlag) {
   pubMQTT(topic.c_str(), payload, retainFlag);
 }
 
+//filter code:
+
+bool arrayContains(JsonArray array, const char* value) {
+  for (JsonVariant v : array) {
+    if (strcmp(v.as<const char*>(), value) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool matchesPattern(const std::string& value, const std::string& pattern) {
+  // simple pattern matching with '*' wildcard
+  auto it = std::search(
+      value.begin(), value.end(),
+      pattern.begin(), pattern.end(),
+      [](char ch1, char ch2) {
+        return ch2 == '*' || ch1 == ch2;
+      });
+
+  return it != value.end();
+}
+
+bool filterMessage(JsonObject message) {
+  JsonObject filters = jsonSYSCONFIGBuffer.as<JsonObject>();
+  String filtersAsString = "";
+  serializeJson(filters, filtersAsString);
+  Log.trace(F("Filters %s" CR), filtersAsString.c_str());
+
+  JsonObject whitelist = filters["whitelist"];
+  for (JsonPair kv : whitelist) {
+    const char* key = kv.key().c_str();
+    if (!message.containsKey(key)) {
+      return false;
+    } else {
+      bool foundMatch = false;
+      for (JsonVariant value : whitelist[key].as<JsonArray>()) {
+        if (matchesPattern(message[key].as<std::string>(), value.as<std::string>())) {
+          foundMatch = true;
+          break;
+        }
+      }
+      if (!foundMatch) {
+        return false;
+      }
+    }
+  }
+
+  JsonObject blacklist = filters["blacklist"];
+  for (JsonPair kv : blacklist) {
+    const char* key = kv.key().c_str();
+    if (message.containsKey(key)) {
+      for (JsonVariant value : blacklist[key].as<JsonArray>()) {
+        if (matchesPattern(message[key].as<std::string>(), value.as<std::string>())) {
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
 /**
  * @brief Publish the payload on default MQTT topic
  *
@@ -686,6 +750,12 @@ void pub(const char* topicori, const char* payload, bool retainFlag) {
  */
 void pub(const char* topicori, JsonObject& data) {
   String dataAsString = "";
+  serializeJson(data, dataAsString);
+  if (!filterMessage(data)) {
+    Log.notice(F("Message filtered %s" CR), dataAsString.c_str());
+    return;
+  }
+
   bool ret = sensor_Retain;
 
 #if defined(ESP8266) || defined(ESP32)
@@ -774,20 +844,33 @@ void pub(const char* topicori, const char* payload) {
  * @param retain true if you what a retain
  */
 void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
-  if (isSDInitialized && SD.exists("/settings.json")) {
-    File settingsFile = SD.open("/settings.json", FILE_READ);
-    if (settingsFile) {
+  Serial.println("Here");
+  if (true) {
+    // File settingsFile = SD.open("/settings.json", FILE_READ);
+    if (true) {
       // Get file size
-      size_t fileSize = settingsFile.size();
+      /*  size_t fileSize = settingsFile.size();
 
       // Allocate memory based on file size
       std::unique_ptr<char[]> buf(new char[fileSize]);
       settingsFile.readBytes(buf.get(), fileSize);
       settingsFile.close();
+*/
+
+      const char* jsonContent = R"({
+        "sensor1": {
+            "identification_element": "id",
+            "identification_method": "equals",
+            "identification_match": "43579",
+            "dataExtractKeys": ["depth","depth"],
+            "formula": [1,1],
+            "mqttTopic": ["/W/e45f01b330f7/tank/0/level","/W/e45f01b330f7/tank/0/remaining"]
+        }
+    })";
 
       // Parse JSON settings
-      DynamicJsonDocument settingsDoc(fileSize);
-      DeserializationError error = deserializeJson(settingsDoc, buf.get(), fileSize);
+      DynamicJsonDocument settingsDoc(1024);
+      DeserializationError error = deserializeJson(settingsDoc, jsonContent);
       if (error) {
         Serial.print("deserializeJson() failed: ");
         Serial.println(error.c_str());
@@ -802,8 +885,7 @@ void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
 
       for (const JsonVariant& setting : settingsDoc.as<JsonArray>()) {
         //add more functions other than equals as an option (use functions for this)
-       // String id = getValueFromKeys(data, setting["identification_element"].as<String>);
-
+        // String id = getValueFromKeys(data, setting["identification_element"].as<String>);
 
         if (data[setting["identification_element"].as<const char*>()] == setting["identification_match"]) {
           int y = 0;
@@ -833,12 +915,19 @@ void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
 
             //String formula = setting["formula"][y].as<String>();
             if (!mattError) {
-              double varDouble = var.toDouble();
-              double result = evaluateExpression(varDouble, formula.c_str());
-              String stringResult = String(result);
-              const char* mqttTopicInput = mqttTopic.c_str();
+              if (formula == "1" || formula == "x") {
+                const char* mqttTopicInput = mqttTopic.c_str();
 
-              pubMQTT(mqttTopicInput, stringResult.c_str(), retain); //need some error checking on size of arrays input into settings.
+                pubMQTT(mqttTopicInput, var.c_str(), retain);
+
+              } else {
+                double varDouble = var.toDouble();
+                double result = evaluateExpression(varDouble, formula.c_str());
+                String stringResult = String(result);
+                const char* mqttTopicInput = mqttTopic.c_str();
+
+                pubMQTT(mqttTopicInput, stringResult.c_str(), retain);
+              } //need some error checking on size of arrays input into settings.
             }
             y++;
           }
@@ -1070,7 +1159,19 @@ void connectMQTT() {
 #if AWS_IOT
   if (client.connect(gateway_name, mqtt_user, mqtt_pass)) { // AWS doesn't support will topic for the moment
 #else
-  if (client.connect(gateway_name, mqtt_user, mqtt_pass, topic, will_QoS, will_Retain, will_Message)) {
+
+  bool conn = false;
+
+  if ((mqtt_user == "" && mqtt_pass == "") || ((mqtt_user[0] == '\0' && mqtt_pass[0] == '\0') || (strlen(mqtt_user) == 0 && strlen(mqtt_pass) == 0))) {
+    conn = client.connect(gateway_name, NULL, NULL, topic, will_QoS, will_Retain, will_Message);
+    Log.warning(F("NULL case" CR));
+  } else {
+    conn = client.connect(gateway_name, mqtt_user, mqtt_pass, topic, will_QoS, will_Retain, will_Message);
+    Log.warning(F("default case" CR));
+    Log.warning(F("mqttUser %s, mqttPass %s" CR), mqtt_user, mqtt_user);
+  }
+
+  if (conn) {
 #endif
 
     displayPrint("MQTT connected");
@@ -1234,8 +1335,6 @@ void setESPWifiProtocolTxPower() {
 }
 #endif
 
-  
-
 void setup() {
   //Launch serial for debugging purposes
   Serial.begin(SERIAL_BAUD);
@@ -1245,7 +1344,6 @@ void setup() {
   pinMode(TRIGGER_GPIO, INPUT_PULLUP);
   checkButton();
 #endif
-
 
   delay(100); //give time to start the flash and avoid issue when reading the preferences
 
@@ -1258,15 +1356,8 @@ void setup() {
   SetupIndicatorInfo();
   SetupIndicators(); // For RGB Leds
 
-  if (!SD.begin()) {
-    Serial.println("Failed to initialize SD card");
-    
-  }else{
-isSDInitialized = true;
-
-  }
-
 #if defined(ESP8266) || defined(ESP32)
+SYSConfig_load();
 #  ifdef ESP8266
 #    ifndef ZgatewaySRFB // if we are not in sonoff rf bridge case we apply the ESP8266 GPIO optimization
   Serial.end();
@@ -3081,6 +3172,40 @@ void MQTTHttpsFWUpdate(char* topicOri, JsonObject& HttpsFwUpdateData) {
 }
 #endif
 
+
+
+#if defined(ESP8266) || defined(ESP32)
+bool SYSConfig_load() {
+  preferences.begin(Gateway_Short_Name, true);
+  if (preferences.isKey("SYSConfig")) {
+    auto error = deserializeJson(jsonSYSCONFIGBuffer, preferences.getString("SYSConfig", "{}"));
+    preferences.end();
+    if (error) {
+      Log.error(F("SYS config deserialization failed: %s, buffer capacity: %u" CR), error.c_str(), jsonSYSCONFIGBuffer.capacity());
+      return false;
+    }
+    if (jsonSYSCONFIGBuffer.isNull()) {
+      Log.warning(F("SYS config is null" CR));
+      return false;
+    }
+    Log.notice(F("Saved SYS config loaded" CR));
+    return true;
+  } else {
+    preferences.end();
+    Log.notice(F("No SYS config to load" CR));
+    return false;
+  }
+}
+
+void SYSConfig_save(std::string jsonSYSConfigString) {
+  preferences.begin(Gateway_Short_Name, false);
+  int result = preferences.putString("SYSConfig", jsonSYSConfigString.c_str());
+  preferences.end();
+  Log.notice(F("SYS Config_save: %s, result: %d" CR), jsonSYSConfigString.c_str(), result);
+}
+#endif
+
+
 void MQTTtoSYS(char* topicOri, JsonObject& SYSdata) { // json object decoding
   if (cmpToMainTopic(topicOri, subjectMQTTtoSYSset)) {
     bool restartESP = false;
@@ -3099,6 +3224,22 @@ void MQTTtoSYS(char* topicOri, JsonObject& SYSdata) { // json object decoding
         stateMeasures();
       }
     }
+
+
+ if ((SYSdata.containsKey("whitelist") || SYSdata.containsKey("blacklist"))) {
+      std::string SYSfilter;
+      serializeJson(SYSdata, SYSfilter);
+      SYSConfig_save(SYSfilter);
+      SYSConfig_load();
+    }
+
+
+
+
+
+
+
+
 #  ifdef RGB_INDICATORS
     if (SYSdata.containsKey("rgbb") && SYSdata["rgbb"].is<float>()) {
       if (SYSdata["rgbb"] >= 0 && SYSdata["rgbb"] <= 255) {
