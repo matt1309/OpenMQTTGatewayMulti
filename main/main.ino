@@ -845,18 +845,24 @@ void pub(const char* topicori, const char* payload) {
  */
 void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
   Serial.println("Here");
+  Log.warning(F("SysConfig for debugging" CR));
+
+String buffer = "";
+  serializeJson(data, buffer);
+  pubMQTT(topic, buffer.c_str(), retain);
+
+
+
+
   if (true) {
-    // File settingsFile = SD.open("/settings.json", FILE_READ);
-    if (true) {
-      // Get file size
-      /*  size_t fileSize = settingsFile.size();
+     JsonObject sysConfig2 = jsonSYSCONFIGBuffer.as<JsonObject>();
+    String sysConfigString;
+    serializeJson(sysConfig2, sysConfigString);
+Log.warning(F("SysConfig for debugging %s" CR), sysConfigString.c_str());
 
-      // Allocate memory based on file size
-      std::unique_ptr<char[]> buf(new char[fileSize]);
-      settingsFile.readBytes(buf.get(), fileSize);
-      settingsFile.close();
-*/
-
+    if (sysConfig2.containsKey("transformations")) {
+      
+/*
       const char* jsonContent = R"({
         "sensor1": {
             "identification_element": "id",
@@ -868,22 +874,11 @@ void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
         }
     })";
 
-      // Parse JSON settings
-      DynamicJsonDocument settingsDoc(1024);
-      DeserializationError error = deserializeJson(settingsDoc, jsonContent);
-      if (error) {
-        Serial.print("deserializeJson() failed: ");
-        Serial.println(error.c_str());
-        //return;
-      }
+    */
 
-      // Process settings here
-      // Example:
-      //   const char* sensor_id = settingsDoc["sensor_id"];
-      // Serial.print("Sensor ID: ");
-      //Serial.println(sensor_id);
 
-      for (const JsonVariant& setting : settingsDoc.as<JsonArray>()) {
+
+      for (const JsonVariant& setting : sysConfig2["transformations"].as<JsonArray>()) {
         //add more functions other than equals as an option (use functions for this)
         // String id = getValueFromKeys(data, setting["identification_element"].as<String>);
 
@@ -942,9 +937,11 @@ void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
   }
 
   //need and else here but maybe change it to else and check if no errors. if errror then also send this so we're not not sending data.
+  /*
   String buffer = "";
   serializeJson(data, buffer);
   pubMQTT(topic, buffer.c_str(), retain);
+  */
 }
 
 /**
@@ -1111,6 +1108,7 @@ void SYSConfig_fromJson(JsonObject& SYSdata) {
 #endif
 }
 
+/*
 #if defined(ESP32)
 void SYSConfig_load() {
   StaticJsonDocument<JSON_MSG_BUFFER> jsonBuffer;
@@ -1137,6 +1135,8 @@ void SYSConfig_load() {
 #else // Function not available for ESP8266
 void SYSConfig_load() {}
 #endif
+
+*/
 
 void connectMQTT() {
 #ifndef ESPWifiManualSetup
@@ -1345,7 +1345,7 @@ void setup() {
   checkButton();
 #endif
 
-  delay(100); //give time to start the flash and avoid issue when reading the preferences
+  delay(1000); //give time to start the flash and avoid issue when reading the preferences
 
   SYSConfig_init();
   SYSConfig_load();
@@ -3172,10 +3172,12 @@ void MQTTHttpsFWUpdate(char* topicOri, JsonObject& HttpsFwUpdateData) {
 }
 #endif
 
-
+//SYSCONFIG was here
 
 #if defined(ESP8266) || defined(ESP32)
 bool SYSConfig_load() {
+
+  Log.warning(F("Gateway_ShortName %s" CR), Gateway_Short_Name);
   preferences.begin(Gateway_Short_Name, true);
   if (preferences.isKey("SYSConfig")) {
     auto error = deserializeJson(jsonSYSCONFIGBuffer, preferences.getString("SYSConfig", "{}"));
@@ -3226,7 +3228,7 @@ void MQTTtoSYS(char* topicOri, JsonObject& SYSdata) { // json object decoding
     }
 
 
- if ((SYSdata.containsKey("whitelist") || SYSdata.containsKey("blacklist"))) {
+ if ((SYSdata.containsKey("whitelist") || SYSdata.containsKey("blacklist") || SYSdata.containsKey("transformations"))) {
       std::string SYSfilter;
       serializeJson(SYSdata, SYSfilter);
       SYSConfig_save(SYSfilter);
