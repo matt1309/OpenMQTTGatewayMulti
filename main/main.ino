@@ -758,6 +758,89 @@ void pub(const char* topicori, JsonObject& data) {
 
   bool ret = sensor_Retain;
 
+  if (true) {
+    JsonObject sysConfig2 = jsonSYSCONFIGBuffer.as<JsonObject>();
+    String sysConfigString;
+    serializeJson(sysConfig2, sysConfigString);
+    Log.warning(F("SysConfig for debugging %s" CR), sysConfigString.c_str());
+
+    if (sysConfig2.containsKey("transformations")) {
+      /*
+      const char* jsonContent = R"({
+        "sensor1": {
+            "identification_element": "id",
+            "identification_method": "equals",
+            "identification_match": "43579",
+            "dataExtractKeys": ["depth","depth"],
+            "formula": [1,1],
+            "mqttTopic": ["/W/e45f01b330f7/tank/0/level","/W/e45f01b330f7/tank/0/remaining"]
+        }
+    })";
+
+    */
+
+      for (const JsonVariant& setting : sysConfig2["transformations"].as<JsonArray>()) {
+        //add more functions other than equals as an option (use functions for this)
+        // String id = getValueFromKeys(data, setting["identification_element"].as<String>);
+
+        if (data[setting["identification_element"].as<const char*>()] == setting["identification_match"]) {
+          int y = 0;
+          for (const JsonVariant& dataKey : setting["dataExtractKeys"].as<JsonArray>()) {
+            //extract element recusively. done one level atm.
+
+            String var = getValueFromKeys(data, dataKey.as<String>());
+
+            String formula;
+            String mqttTopic;
+            bool mattError = false;
+
+            if (setting.containsKey("formula") && setting["formula"].is<JsonArray>() && setting.containsKey("mqttTopic") && setting["mqttTopic"].is<JsonArray>()) {
+              JsonArray formulaArray = setting["formula"].as<JsonArray>(); // Assuming "formula" is an array
+              JsonArray mqttTopicArray = setting["mqttTopic"].as<JsonArray>(); // Assuming "formula" is an array
+              if (formulaArray.size() > y && mqttTopicArray.size() > y) {
+                formula = formulaArray[y].as<String>();
+                mqttTopic = mqttTopicArray[y].as<String>();
+              } else {
+                Serial.println("Not enough formula/MQTT elements");
+                Log.warning(F("Not enough formula/MQTT elements" CR));
+                mattError = true;
+              }
+            } else {
+              Serial.println("Error or missing formula/mqttTopic from settings.json");
+              Log.warning(F("Error or missing formula/mqttTopic from settings.json" CR));
+              mattError = true;
+            }
+
+            //String formula = setting["formula"][y].as<String>();
+            if (!mattError) {
+              if (formula == "1" || formula == "x") {
+                const char* mqttTopicInput = mqttTopic.c_str();
+
+                pubMQTT(mqttTopicInput, var.c_str(), ret);
+
+              } else {
+                double varDouble = var.toDouble();
+                double result = evaluateExpression(varDouble, formula.c_str());
+                String stringResult = String(result);
+                const char* mqttTopicInput = mqttTopic.c_str();
+
+                pubMQTT(mqttTopicInput, stringResult.c_str(), ret);
+              } //need some error checking on size of arrays input into settings.
+            }
+            y++;
+          }
+        }
+      }
+
+    } else {
+      Serial.println("Failed to open settings file");
+      Log.warning(F("Failed to open settings file" CR));
+    }
+  } else {
+    Serial.println("Settings file not found");
+    Log.warning(F("Settings file not found" CR));
+  }
+
 #if defined(ESP8266) || defined(ESP32)
 #  if message_UTCtimestamp == true
   data["UTCtime"] = UTCtimestamp();
@@ -847,94 +930,9 @@ void pub_custom_topic(const char* topic, JsonObject& data, boolean retain) {
   Serial.println("Here");
   Log.warning(F("SysConfig for debugging" CR));
 
-String buffer = "";
+  String buffer = "";
   serializeJson(data, buffer);
   pubMQTT(topic, buffer.c_str(), retain);
-
-
-
-
-  if (true) {
-     JsonObject sysConfig2 = jsonSYSCONFIGBuffer.as<JsonObject>();
-    String sysConfigString;
-    serializeJson(sysConfig2, sysConfigString);
-Log.warning(F("SysConfig for debugging %s" CR), sysConfigString.c_str());
-
-    if (sysConfig2.containsKey("transformations")) {
-      
-/*
-      const char* jsonContent = R"({
-        "sensor1": {
-            "identification_element": "id",
-            "identification_method": "equals",
-            "identification_match": "43579",
-            "dataExtractKeys": ["depth","depth"],
-            "formula": [1,1],
-            "mqttTopic": ["/W/e45f01b330f7/tank/0/level","/W/e45f01b330f7/tank/0/remaining"]
-        }
-    })";
-
-    */
-
-
-
-      for (const JsonVariant& setting : sysConfig2["transformations"].as<JsonArray>()) {
-        //add more functions other than equals as an option (use functions for this)
-        // String id = getValueFromKeys(data, setting["identification_element"].as<String>);
-
-        if (data[setting["identification_element"].as<const char*>()] == setting["identification_match"]) {
-          int y = 0;
-          for (const JsonVariant& dataKey : setting["dataExtractKeys"].as<JsonArray>()) {
-            //extract element recusively. done one level atm.
-
-            String var = getValueFromKeys(data, dataKey.as<String>());
-
-            String formula;
-            String mqttTopic = topic;
-            bool mattError = false;
-
-            if (setting.containsKey("formula") && setting["formula"].is<JsonArray>() && setting.containsKey("mqttTopic") && setting["mqttTopic"].is<JsonArray>()) {
-              JsonArray formulaArray = setting["formula"].as<JsonArray>(); // Assuming "formula" is an array
-              JsonArray mqttTopicArray = setting["mqttTopic"].as<JsonArray>(); // Assuming "formula" is an array
-              if (formulaArray.size() > y && mqttTopicArray.size() > y) {
-                formula = formulaArray[y].as<String>();
-                mqttTopic = mqttTopicArray[y].as<String>();
-              } else {
-                Serial.println("Not enough formula/MQTT elements");
-                mattError = true;
-              }
-            } else {
-              Serial.println("Error or missing formula/mqttTopic from settings.json");
-              mattError = true;
-            }
-
-            //String formula = setting["formula"][y].as<String>();
-            if (!mattError) {
-              if (formula == "1" || formula == "x") {
-                const char* mqttTopicInput = mqttTopic.c_str();
-
-                pubMQTT(mqttTopicInput, var.c_str(), retain);
-
-              } else {
-                double varDouble = var.toDouble();
-                double result = evaluateExpression(varDouble, formula.c_str());
-                String stringResult = String(result);
-                const char* mqttTopicInput = mqttTopic.c_str();
-
-                pubMQTT(mqttTopicInput, stringResult.c_str(), retain);
-              } //need some error checking on size of arrays input into settings.
-            }
-            y++;
-          }
-        }
-      }
-
-    } else {
-      Serial.println("Failed to open settings file");
-    }
-  } else {
-    Serial.println("Settings file not found");
-  }
 
   //need and else here but maybe change it to else and check if no errors. if errror then also send this so we're not not sending data.
   /*
@@ -1357,7 +1355,7 @@ void setup() {
   SetupIndicators(); // For RGB Leds
 
 #if defined(ESP8266) || defined(ESP32)
-SYSConfig_load();
+  SYSConfig_load();
 #  ifdef ESP8266
 #    ifndef ZgatewaySRFB // if we are not in sonoff rf bridge case we apply the ESP8266 GPIO optimization
   Serial.end();
@@ -3176,7 +3174,6 @@ void MQTTHttpsFWUpdate(char* topicOri, JsonObject& HttpsFwUpdateData) {
 
 #if defined(ESP8266) || defined(ESP32)
 bool SYSConfig_load() {
-
   Log.warning(F("Gateway_ShortName %s" CR), Gateway_Short_Name);
   preferences.begin(Gateway_Short_Name, true);
   if (preferences.isKey("SYSConfig")) {
@@ -3207,7 +3204,6 @@ void SYSConfig_save(std::string jsonSYSConfigString) {
 }
 #endif
 
-
 void MQTTtoSYS(char* topicOri, JsonObject& SYSdata) { // json object decoding
   if (cmpToMainTopic(topicOri, subjectMQTTtoSYSset)) {
     bool restartESP = false;
@@ -3227,20 +3223,12 @@ void MQTTtoSYS(char* topicOri, JsonObject& SYSdata) { // json object decoding
       }
     }
 
-
- if ((SYSdata.containsKey("whitelist") || SYSdata.containsKey("blacklist") || SYSdata.containsKey("transformations"))) {
+    if ((SYSdata.containsKey("whitelist") || SYSdata.containsKey("blacklist") || SYSdata.containsKey("transformations"))) {
       std::string SYSfilter;
       serializeJson(SYSdata, SYSfilter);
       SYSConfig_save(SYSfilter);
       SYSConfig_load();
     }
-
-
-
-
-
-
-
 
 #  ifdef RGB_INDICATORS
     if (SYSdata.containsKey("rgbb") && SYSdata["rgbb"].is<float>()) {
